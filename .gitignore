@@ -4,3 +4,7 @@ __pycache__/
 weixin-articles/
 results.json
 failed.json
+node_modules/
+desktop/dist/
+desktop/release/
+desktop/.vite/

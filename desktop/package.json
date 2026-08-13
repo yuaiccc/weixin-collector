@@ -1,0 +1,23 @@
+{
+  "name": "weixin-collector-desktop",
+  "version": "0.1.0",
+  "description": "Archive public WeChat articles as Markdown with local images.",
+  "main": "src/main.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --mac --win --publish never",
+    "lint": "node --check src/main.js && node --check src/preload.js && node --check src/renderer.js"
+  },
+  "devDependencies": {
+    "electron": "^43.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.yuaiccc.weixincollector",
+    "productName": "Weixin Collector",
+    "files": ["src/**/*", "package.json"],
+    "mac": { "target": ["dmg"], "category": "public.app-category.productivity" },
+    "win": { "target": ["nsis"] }
+  }
+}
