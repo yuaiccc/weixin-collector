@@ -1,6 +1,7 @@
 let output = '';
 const $ = (id) => document.getElementById(id);
 const status = $('status'); const results = $('results'); const cached = $('cached'); const archive = $('archive'); const fetchButton = $('fetch');
+const searchButton = $('search');
 let cachedItems = [];
 const element = (tag, text, className) => {
   const node = document.createElement(tag);
@@ -48,4 +49,8 @@ archive.addEventListener('click', async () => {
   try { const data = await window.collector.archiveSelected({ ids, output }); status.textContent = `保存完成：${data.filter(x => x.ok).length}/${data.length}`; showResults(data); }
   catch (error) { status.textContent = error.message; results.replaceChildren(element('article', error.message, 'error')); }
   finally { archive.disabled = false; }
+});
+searchButton.addEventListener('click', async () => {
+  try { const data = await window.collector.searchLibrary({ root: output, query: $('query').value }); $('search-results').replaceChildren(...data.map((item) => { const card = document.createElement('article'); card.append(element('b', item.title)); card.append(element('small', `${item.author} · ${item.publishTime} · ${item.theme}`)); card.append(element('code', item.path)); return card; })); status.textContent = `找到 ${data.length} 篇`; }
+  catch (error) { status.textContent = error.message; }
 });

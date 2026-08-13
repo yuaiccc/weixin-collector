@@ -1,6 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain, session } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const crypto = require('node:crypto');
 
 const articlePartition = 'temp:weixin-collector';
 const articleWindowOptions = { show: false, webPreferences: { sandbox: true, contextIsolation: true, partition: articlePartition } };
@@ -86,6 +87,30 @@ function dateFolder(value) {
   return match ? `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}` : '未知日期';
 }
 
+function yearMonth(value) {
+  const match = value.match(/(20\d{2})[年\-/](\d{1,2})/);
+  return match ? { year: match[1], month: match[2].padStart(2, '0') } : { year: '未知年份', month: '未知月份' };
+}
+
+function themeFor(title, html) {
+  const text = `${title} ${html.replace(/<[^>]+>/g, ' ')}`.toLowerCase();
+  const themes = [['人工智能', ['人工智能', 'ai', '大模型', 'agent']], ['数字技术', ['数字化', '数字', '互联网', '软件', '数据']], ['教育', ['教育', '高校', '大学', '学生']], ['职场', ['职场', '招聘', '就业', '工作']], ['财经', ['财经', '投资', '股票', '经济']], ['生活', ['生活', '健康', '旅行', '美食']]];
+  return themes.find(([, words]) => words.some((word) => text.includes(word)))?.[0] || '其他';
+}
+
+function contentHash(item) {
+  return crypto.createHash('sha256').update(`${item.title}\n${item.author}\n${item.html.replace(/\s+/g, '')}`).digest('hex');
+}
+
+async function readIndex(root) {
+  try { return JSON.parse(await fs.readFile(path.join(root, 'library-index.json'), 'utf8')); }
+  catch { return []; }
+}
+
+async function writeIndex(root, records) {
+  await fs.writeFile(path.join(root, 'library-index.json'), JSON.stringify(records, null, 2), 'utf8');
+}
+
 async function archive(url, root) {
   if (!/^https:\/\/mp\.weixin\.qq\.com\/s\//.test(url)) throw new Error('只接受 mp.weixin.qq.com/s/... 文章链接。');
   const article = await extractArticle(url);
@@ -109,12 +134,17 @@ async function cacheArticle(url) {
   if (!/^https:\/\/mp\.weixin\.qq\.com\/s\//.test(url)) throw new Error('只接受 mp.weixin.qq.com/s/... 文章链接。');
   const article = await extractArticle(url);
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  articleCache.set(id, { id, url, ...article });
-  return { id, url, title: article.title, author: article.author, publishTime: article.publishTime, images: article.images.length };
+  const item = { id, url, ...article, institution: article.author, theme: themeFor(article.title, article.html), hash: contentHash(article) };
+  articleCache.set(id, item);
+  return { id, url, title: item.title, author: item.author, institution: item.institution, publishTime: item.publishTime, theme: item.theme, images: item.images.length };
 }
 
 async function archiveCached(item, root) {
-  const base = path.join(root, safeName(item.author), dateFolder(item.publishTime), safeName(item.title));
+  const { year, month } = yearMonth(item.publishTime);
+  const base = path.join(root, safeName(item.author), safeName(item.institution), year, month, safeName(item.theme), safeName(item.title));
+  const index = await readIndex(root);
+  const duplicate = index.find((record) => record.hash === item.hash || (record.title === item.title && record.author === item.author && record.publishTime === item.publishTime));
+  if (duplicate) return { url: item.url, title: item.title, author: item.author, publishTime: item.publishTime, theme: item.theme, duplicate: true, path: duplicate.path, images: 0 };
   const folder = `${base}-${Date.now()}`;
   const imageFolder = path.join(folder, 'images');
   await fs.mkdir(imageFolder, { recursive: true });
@@ -125,7 +155,21 @@ async function archiveCached(item, root) {
   const markdown = `# ${item.title}\n\n> 公众号: ${item.author}\n> 发布时间: ${item.publishTime}\n> 原文链接: ${item.url}\n\n---\n\n${toMarkdown(item.html, imagePaths)}\n`;
   const filename = `${safeName(item.title)}.md`;
   await fs.writeFile(path.join(folder, filename), markdown, 'utf8');
-  return { url: item.url, title: item.title, author: item.author, publishTime: item.publishTime, path: path.join(folder, filename), images: imagePaths.filter(Boolean).length };
+  const record = { hash: item.hash, url: item.url, title: item.title, author: item.author, institution: item.institution, publishTime: item.publishTime, theme: item.theme, path: path.join(folder, filename), indexedAt: new Date().toISOString() };
+  await writeIndex(root, [...index, record]);
+  return { ...record, images: imagePaths.filter(Boolean).length };
+}
+
+async function walkMarkdown(root) {
+  const entries = await fs.readdir(root, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    if (entry.name === 'library-index.json') continue;
+    const full = path.join(root, entry.name);
+    if (entry.isDirectory()) files.push(...await walkMarkdown(full));
+    else if (entry.isFile() && entry.name.endsWith('.md')) files.push(full);
+  }
+  return files;
 }
 
 ipcMain.handle('choose-folder', async () => {
@@ -158,6 +202,20 @@ ipcMain.handle('archive-selected', async (event, { ids, output }) => {
   }
   await fs.writeFile(path.join(output, 'latest-run.json'), JSON.stringify(results, null, 2), 'utf8');
   return results;
+});
+
+ipcMain.handle('search-library', async (_event, { root, query }) => {
+  if (!root) throw new Error('请选择搜索目录。');
+  const needle = (query || '').trim().toLowerCase();
+  if (!needle) throw new Error('请输入搜索关键词。');
+  const index = await readIndex(root);
+  const results = [];
+  for (const record of index) {
+    let content = '';
+    try { content = await fs.readFile(record.path, 'utf8'); } catch { continue; }
+    if (`${record.title} ${record.author} ${record.institution} ${record.theme} ${content}`.toLowerCase().includes(needle)) results.push(record);
+  }
+  return results.slice(0, 100);
 });
 
 ipcMain.handle('archive', async (event, { urls, output }) => {
