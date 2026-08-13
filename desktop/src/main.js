@@ -7,6 +7,7 @@ const articleWindowOptions = { show: false, webPreferences: { sandbox: true, con
 const safeName = (value) => (value || '未知').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').trim().slice(0, 100) || '未知';
 const unique = (values) => [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 const wechatImageHosts = new Set(['mmbiz.qpic.cn', 'mmbiz.qlogo.cn', 'wx.qlogo.cn', 'thirdwx.qlogo.cn']);
+const articleCache = new Map();
 
 function isWechatImage(url) {
   try { return new URL(url).protocol === 'https:' && wechatImageHosts.has(new URL(url).hostname); }
@@ -104,9 +105,59 @@ async function archive(url, root) {
   return { url, title: article.title, author: article.author, publishTime: article.publishTime, path: path.join(folder, filename), images: imagePaths.filter(Boolean).length };
 }
 
+async function cacheArticle(url) {
+  if (!/^https:\/\/mp\.weixin\.qq\.com\/s\//.test(url)) throw new Error('只接受 mp.weixin.qq.com/s/... 文章链接。');
+  const article = await extractArticle(url);
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  articleCache.set(id, { id, url, ...article });
+  return { id, url, title: article.title, author: article.author, publishTime: article.publishTime, images: article.images.length };
+}
+
+async function archiveCached(item, root) {
+  const base = path.join(root, safeName(item.author), dateFolder(item.publishTime), safeName(item.title));
+  const folder = `${base}-${Date.now()}`;
+  const imageFolder = path.join(folder, 'images');
+  await fs.mkdir(imageFolder, { recursive: true });
+  const imagePaths = [];
+  for (const [index, image] of item.images.entries()) {
+    try { imagePaths.push(await downloadImage(image, imageFolder, index + 1)); } catch { imagePaths.push(''); }
+  }
+  const markdown = `# ${item.title}\n\n> 公众号: ${item.author}\n> 发布时间: ${item.publishTime}\n> 原文链接: ${item.url}\n\n---\n\n${toMarkdown(item.html, imagePaths)}\n`;
+  const filename = `${safeName(item.title)}.md`;
+  await fs.writeFile(path.join(folder, filename), markdown, 'utf8');
+  return { url: item.url, title: item.title, author: item.author, publishTime: item.publishTime, path: path.join(folder, filename), images: imagePaths.filter(Boolean).length };
+}
+
 ipcMain.handle('choose-folder', async () => {
   const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
   return result.canceled ? null : result.filePaths[0];
+});
+
+ipcMain.handle('fetch-articles', async (event, { urls }) => {
+  const items = unique(urls);
+  if (!items.length) throw new Error('请至少粘贴一篇文章链接。');
+  const results = [];
+  for (const [index, url] of items.entries()) {
+    event.sender.send('fetch-progress', { current: index + 1, total: items.length, url });
+    try { results.push({ ok: true, ...(await cacheArticle(url)) }); }
+    catch (error) { results.push({ ok: false, url, error: error.message }); }
+  }
+  return results;
+});
+
+ipcMain.handle('archive-selected', async (event, { ids, output }) => {
+  if (!output) throw new Error('请选择保存目录。');
+  const selected = ids.map((id) => articleCache.get(id)).filter(Boolean);
+  if (!selected.length) throw new Error('请至少选择一篇已缓存文章。');
+  await fs.mkdir(output, { recursive: true });
+  const results = [];
+  for (const [index, item] of selected.entries()) {
+    event.sender.send('archive-progress', { current: index + 1, total: selected.length, url: item.url });
+    try { results.push({ ok: true, ...(await archiveCached(item, output)) }); }
+    catch (error) { results.push({ ok: false, url: item.url, error: error.message }); }
+  }
+  await fs.writeFile(path.join(output, 'latest-run.json'), JSON.stringify(results, null, 2), 'utf8');
+  return results;
 });
 
 ipcMain.handle('archive', async (event, { urls, output }) => {
