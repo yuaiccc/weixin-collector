@@ -5,6 +5,12 @@ const path = require('node:path');
 const articleWindowOptions = { show: false, webPreferences: { sandbox: true, contextIsolation: true } };
 const safeName = (value) => (value || '未知').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').trim().slice(0, 100) || '未知';
 const unique = (values) => [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+const wechatImageHosts = new Set(['mmbiz.qpic.cn', 'mmbiz.qlogo.cn', 'wx.qlogo.cn', 'thirdwx.qlogo.cn']);
+
+function isWechatImage(url) {
+  try { return new URL(url).protocol === 'https:' && wechatImageHosts.has(new URL(url).hostname); }
+  catch { return false; }
+}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -26,17 +32,19 @@ async function extractArticle(url) {
       const publishTime = text('#publish_time') || '未知日期';
       const content = document.querySelector('#js_content');
       if (!content) throw new Error('未找到文章正文；文章可能需要登录、已删除或页面结构发生变化。');
-      const images = [...content.querySelectorAll('img')].map((img) => img.getAttribute('data-src') || img.src).filter((src) => /^https?:/.test(src));
+      const images = [...content.querySelectorAll('img')].map((img) => img.getAttribute('data-src') || img.src).filter((src) => /^https:/.test(src));
       return { title, author, publishTime, html: content.innerHTML, images };
     })()`);
   } finally { if (!win.isDestroyed()) win.destroy(); }
 }
 
 async function downloadImage(url, output, number) {
+  if (!isWechatImage(url)) throw new Error('已跳过非微信图片地址。');
   const response = await netFetch(url);
   if (!response.ok) throw new Error(`图片下载失败 (${response.status})`);
+  if (!isWechatImage(response.url)) throw new Error('图片重定向到了非微信地址。');
   const mime = response.headers.get('content-type') || '';
-  const ext = mime.includes('png') ? 'png' : mime.includes('gif') ? 'gif' : 'jpg';
+  const ext = mime.includes('png') ? 'png' : mime.includes('gif') ? 'gif' : mime.includes('webp') ? 'webp' : 'jpg';
   const filename = `img_${String(number).padStart(3, '0')}.${ext}`;
   await fs.writeFile(path.join(output, filename), Buffer.from(await response.arrayBuffer()));
   return `images/${filename}`;
