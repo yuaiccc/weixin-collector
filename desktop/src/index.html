@@ -1,6 +1,6 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:;"><title>Weixin Collector</title><link rel="stylesheet" href="style.css"></head><body>
 <main>
-<section class="card intake-card"><textarea id="urls" aria-label="文章链接" placeholder="粘贴公众号文章链接，每行一篇"></textarea><button id="fetch">开始缓存</button></section>
+<section class="card intake-card"><textarea id="urls" aria-label="文章链接" placeholder="粘贴公众号文章链接"></textarea><button id="fetch">开始缓存</button></section>
 <section id="cached-card" class="card is-hidden"><div class="row"><h2>已缓存文章</h2><span id="selection" class="muted">尚未缓存</span></div><div id="cached" class="results"></div><div class="row"><div><span class="muted">保存到</span><strong id="folder">尚未选择目录</strong></div><button id="choose" class="secondary">选择目录</button><button id="archive">保存选中</button></div></section>
 <section id="status-card" class="card is-hidden"><div class="row"><h2>运行状态</h2><span id="status" class="muted">准备就绪</span></div><div id="results" class="results"></div></section>
 <section id="search-card" class="card is-hidden"><div class="row"><h2>本地全文搜索</h2><button id="search">搜索</button></div><input id="query" class="search-input" placeholder="搜索标题、作者、主题或正文"><div id="search-results" class="results"></div></section>

@@ -6,7 +6,11 @@ const crypto = require('node:crypto');
 const articlePartition = 'temp:weixin-collector';
 const articleWindowOptions = { show: false, webPreferences: { sandbox: true, contextIsolation: true, partition: articlePartition } };
 const safeName = (value) => (value || '未知').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').trim().slice(0, 100) || '未知';
-const unique = (values) => [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+const extractUrls = (value) => {
+  const matches = String(value || '').match(/https?:\/\/mp\.weixin\.qq\.com\/s\/[^\s<>'"）)]+/g) || [];
+  return [...new Set(matches.map((url) => url.replace(/[.,;!?。，；！？]+$/, '')))];
+};
+const unique = (values) => [...new Set(values.flatMap((value) => extractUrls(value)))];
 const wechatImageHosts = new Set(['mmbiz.qpic.cn', 'mmbiz.qlogo.cn', 'wx.qlogo.cn', 'thirdwx.qlogo.cn']);
 const articleCache = new Map();
 

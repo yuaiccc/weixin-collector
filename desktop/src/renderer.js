@@ -4,6 +4,10 @@ const status = $('status'); const results = $('results'); const cached = $('cach
 const searchButton = $('search');
 const revealWorkspace = () => ['cached-card', 'status-card', 'search-card'].forEach((id) => $(id).classList.remove('is-hidden'));
 let cachedItems = [];
+const normalizeInput = (value) => {
+  const matches = String(value || '').match(/https?:\/\/mp\.weixin\.qq\.com\/s\/[^\s<>'"）)]+/g) || [];
+  return [...new Set(matches.map((url) => url.replace(/[.,;!?。，；！？]+$/, '')))];
+};
 const element = (tag, text, className) => {
   const node = document.createElement(tag);
   node.textContent = text;
@@ -37,6 +41,11 @@ const showCached = () => {
   })); updateSelection();
 };
 $('choose').addEventListener('click', async () => { output = await window.collector.chooseFolder() || output; $('folder').textContent = output || '尚未选择目录'; });
+$('urls').addEventListener('paste', (event) => {
+  event.preventDefault();
+  const pasted = event.clipboardData?.getData('text') || '';
+  $('urls').value = normalizeInput(pasted).join('\n');
+});
 window.collector.onProgress(({ current, total, url }) => { status.textContent = `正在处理 ${current}/${total}`; showProgress(url); });
 window.collector.onFetchProgress(({ current, total, url }) => { status.textContent = `正在缓存 ${current}/${total}`; showProgress(url); });
 fetchButton.addEventListener('click', async () => {
