@@ -2,6 +2,7 @@ let output = '';
 const $ = (id) => document.getElementById(id);
 const status = $('status'); const results = $('results'); const cached = $('cached'); const archive = $('archive'); const fetchButton = $('fetch');
 const searchButton = $('search');
+const revealWorkspace = () => ['cached-card', 'status-card', 'search-card'].forEach((id) => $(id).classList.remove('is-hidden'));
 let cachedItems = [];
 const element = (tag, text, className) => {
   const node = document.createElement(tag);
@@ -40,7 +41,7 @@ window.collector.onProgress(({ current, total, url }) => { status.textContent = 
 window.collector.onFetchProgress(({ current, total, url }) => { status.textContent = `正在缓存 ${current}/${total}`; showProgress(url); });
 fetchButton.addEventListener('click', async () => {
   fetchButton.disabled = true; results.replaceChildren(); const urls = $('urls').value.split(/\n+/);
-  try { cachedItems = await window.collector.fetchArticles({ urls }); status.textContent = `缓存完成：${cachedItems.filter((x) => x.ok).length}/${cachedItems.length}`; showCached(); }
+  try { cachedItems = await window.collector.fetchArticles({ urls }); revealWorkspace(); status.textContent = `缓存完成：${cachedItems.filter((x) => x.ok).length}/${cachedItems.length}`; showCached(); }
   catch (error) { status.textContent = error.message; results.replaceChildren(element('article', error.message, 'error')); }
   finally { fetchButton.disabled = false; }
 });
