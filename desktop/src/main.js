@@ -58,7 +58,10 @@ async function netFetch(url) {
 function toMarkdown(html, imagePaths) {
   let imageIndex = 0;
   const normalized = html
-    .replace(/<img[^>]*>/gi, () => `\n![图片](${imagePaths[imageIndex++] || ''})\n`)
+    .replace(/<img[^>]*>/gi, () => {
+      const imagePath = imagePaths[imageIndex++];
+      return imagePath ? `\n![图片](${imagePath})\n` : '';
+    })
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(p|div|section|li|h[1-6])>/gi, '\n\n')
     .replace(/<li[^>]*>/gi, '- ')
