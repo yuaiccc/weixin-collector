@@ -2,7 +2,8 @@ const { app, BrowserWindow, dialog, ipcMain, session } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
-const articleWindowOptions = { show: false, webPreferences: { sandbox: true, contextIsolation: true } };
+const articlePartition = 'temp:weixin-collector';
+const articleWindowOptions = { show: false, webPreferences: { sandbox: true, contextIsolation: true, partition: articlePartition } };
 const safeName = (value) => (value || '未知').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').trim().slice(0, 100) || '未知';
 const unique = (values) => [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 const wechatImageHosts = new Set(['mmbiz.qpic.cn', 'mmbiz.qlogo.cn', 'wx.qlogo.cn', 'thirdwx.qlogo.cn']);
@@ -51,7 +52,7 @@ async function downloadImage(url, output, number) {
 }
 
 async function netFetch(url) {
-  return session.defaultSession.fetch(url, { credentials: 'omit', redirect: 'follow' });
+  return session.fromPartition(articlePartition).fetch(url, { credentials: 'omit', redirect: 'follow' });
 }
 
 function toMarkdown(html, imagePaths) {
